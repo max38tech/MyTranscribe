@@ -1,5 +1,6 @@
 """
 Global System-Wide Dictation Service for MyTranscribe.
+Supports Windows, macOS, and Linux (Wayland and X11).
 Allows pressing a global key combination in ANY application (WhatsApp, Slack, Notepad, etc.),
 speaking speech, and automatically inserting the cleaned text into the active text field.
 """
@@ -10,9 +11,11 @@ import sys
 import time
 import uuid
 import queue
+import shutil
 import logging
 import threading
-from typing import Optional, Callable, Dict, Any, List
+import subprocess
+from typing import Optional, Callable, Dict, Any, List, Set
 import numpy as np
 
 logger = logging.getLogger("mytranscribe.dictation")
@@ -34,12 +37,22 @@ except Exception as e:
     PYNPUT_AVAILABLE = False
     logger.warning(f"pynput or pyperclip not available: {e}")
 
+# Optional Linux evdev kernel input listener (Wayland + X11)
+try:
+    if sys.platform.startswith("linux"):
+        import evdev
+        from evdev import ecodes
+        EVDEV_AVAILABLE = True
+    else:
+        EVDEV_AVAILABLE = False
+except Exception:
+    EVDEV_AVAILABLE = False
+
 from .transcriber import Transcriber
 from .cleaner import DisfluencyCleaner
 from .database import save_transcript
 
 
-# Available standard hotkey presets
 HOTKEY_PRESETS = [
     {"id": "<ctrl>+<alt>+<space>", "name": "Ctrl + Alt + Space (Recommended)"},
     {"id": "<alt>+d", "name": "Alt + D"},
@@ -48,6 +61,105 @@ HOTKEY_PRESETS = [
     {"id": "<f8>", "name": "F8 Key"},
     {"id": "<f9>", "name": "F9 Key"},
 ]
+
+
+class EvdevHotKeyManager:
+    """Linux kernel-level global input listener working on both Wayland & X11."""
+
+    def __init__(self, hotkey_str: str, on_trigger: Callable[[], None]):
+        self.hotkey_str = hotkey_str
+        self.on_trigger = on_trigger
+        self.running = False
+        self._thread: Optional[threading.Thread] = None
+        self._key_codes = self._parse_hotkey(hotkey_str)
+
+    def _parse_hotkey(self, hotkey: str) -> List[Set[int]]:
+        """Map hotkey string to sets of evdev ecodes."""
+        if not EVDEV_AVAILABLE:
+            return []
+
+        key_map = {
+            "ctrl": {ecodes.KEY_LEFTCTRL, ecodes.KEY_RIGHTCTRL},
+            "alt": {ecodes.KEY_LEFTALT, ecodes.KEY_RIGHTALT},
+            "shift": {ecodes.KEY_LEFTSHIFT, ecodes.KEY_RIGHTSHIFT},
+            "super": {ecodes.KEY_LEFTMETA, ecodes.KEY_RIGHTMETA},
+            "space": {ecodes.KEY_SPACE},
+            "d": {ecodes.KEY_D},
+            "f8": {ecodes.KEY_F8},
+            "f9": {ecodes.KEY_F9},
+        }
+
+        parts = hotkey.lower().replace("<", "").replace(">", "").split("+")
+        groups = []
+        for part in parts:
+            part = part.strip()
+            if part in key_map:
+                groups.append(key_map[part])
+            else:
+                code_name = f"KEY_{part.upper()}"
+                if hasattr(ecodes, code_name):
+                    groups.append({getattr(ecodes, code_name)})
+        return groups
+
+    def start(self) -> bool:
+        """Find keyboard devices and start event loop."""
+        if not EVDEV_AVAILABLE or not self._key_codes:
+            return False
+
+        try:
+            device_paths = evdev.list_devices()
+            devices = []
+            for path in device_paths:
+                try:
+                    dev = evdev.InputDevice(path)
+                    caps = dev.capabilities()
+                    if ecodes.EV_KEY in caps:
+                        devices.append(dev)
+                except (PermissionError, OSError):
+                    continue
+
+            if not devices:
+                logger.warning(
+                    "[Linux Evdev] No readable input devices found in /dev/input/. "
+                    "To enable direct kernel hotkeys, run: 'sudo usermod -aG input $USER' and relogin. "
+                    "Alternatively, bind 'python toggle.py' in GNOME/KDE Custom Shortcuts."
+                )
+                return False
+
+            self.running = True
+            self._thread = threading.Thread(target=self._loop, args=(devices,), daemon=True)
+            self._thread.start()
+            logger.info(f"[Linux Evdev] Kernel hotkey listener active on {len(devices)} device(s) for '{self.hotkey_str}'.")
+            return True
+        except Exception as e:
+            logger.debug(f"[Linux Evdev] Failed to initialize: {e}")
+            return False
+
+    def stop(self):
+        self.running = False
+
+    def _loop(self, devices):
+        import select
+        active_keys: Set[int] = set()
+
+        try:
+            while self.running:
+                r, _, _ = select.select(devices, [], [], 0.5)
+                for dev in r:
+                    try:
+                        for event in dev.read():
+                            if event.type == ecodes.EV_KEY:
+                                if event.value == 1:  # Key down
+                                    active_keys.add(event.code)
+                                    # Check if all required hotkey groups have at least one active key
+                                    if all(any(k in active_keys for k in grp) for grp in self._key_codes):
+                                        self.on_trigger()
+                                elif event.value == 0:  # Key up
+                                    active_keys.discard(event.code)
+                    except Exception:
+                        pass
+        except Exception as err:
+            logger.debug(f"[Linux Evdev] Loop error: {err}")
 
 
 class DictationService:
@@ -73,45 +185,62 @@ class DictationService:
         self._audio_buffer: List[np.ndarray] = []
         self._sd_stream: Optional[Any] = None
         self._hotkey_listener: Optional[Any] = None
+        self._evdev_manager: Optional[EvdevHotKeyManager] = None
         self._lock = threading.Lock()
         self.keyboard_controller = KeyboardController() if PYNPUT_AVAILABLE else None
 
-    def start(self):
-        """Start the global hotkey listener in background."""
-        if not PYNPUT_AVAILABLE:
-            logger.warning("Global hotkeys cannot start because pynput is not available.")
-            return False
+    def start(self) -> bool:
+        """Start the global hotkey listener in background across Windows, macOS, and Linux."""
+        self._stop_listeners()
 
-        self._stop_hotkey_listener()
+        started = False
 
-        try:
-            hotkeys = {self.hotkey_str: self._on_hotkey_triggered}
-            self._hotkey_listener = keyboard.GlobalHotKeys(hotkeys)
-            self._hotkey_listener.daemon = True
-            self._hotkey_listener.start()
-            logger.info(f"Global Dictation active. Hotkey: {self.hotkey_str}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to start global hotkey listener with '{self.hotkey_str}': {e}")
-            # Fallback to default
-            if self.hotkey_str != "<ctrl>+<alt>+<space>":
-                self.hotkey_str = "<ctrl>+<alt>+<space>"
-                return self.start()
-            return False
+        # On Linux: Try evdev kernel listener first (works on Wayland and X11)
+        if sys.platform.startswith("linux") and EVDEV_AVAILABLE:
+            self._evdev_manager = EvdevHotKeyManager(self.hotkey_str, self._on_hotkey_triggered)
+            if self._evdev_manager.start():
+                started = True
+
+        # Try pynput GlobalHotKeys (works on Windows, macOS, and Linux X11)
+        if PYNPUT_AVAILABLE:
+            try:
+                hotkeys = {self.hotkey_str: self._on_hotkey_triggered}
+                self._hotkey_listener = keyboard.GlobalHotKeys(hotkeys)
+                self._hotkey_listener.daemon = True
+                self._hotkey_listener.start()
+                started = True
+                logger.info(f"Global Dictation active via pynput. Hotkey: {self.hotkey_str}")
+            except Exception as e:
+                logger.warning(f"pynput hotkey listener error: {e}")
+
+        if not started:
+            logger.info(
+                f"[Dictation Ready] Global hotkey set to {self.hotkey_str}. "
+                "On Linux Wayland, you can also bind 'python toggle.py' to any keyboard shortcut in GNOME/KDE Settings."
+            )
+
+        return True
 
     def stop(self):
         """Stop hotkey listener and any active recording."""
-        self._stop_hotkey_listener()
+        self._stop_listeners()
         if self.is_recording:
             self._stop_recording()
 
-    def _stop_hotkey_listener(self):
+    def _stop_listeners(self):
         if self._hotkey_listener:
             try:
                 self._hotkey_listener.stop()
             except Exception:
                 pass
             self._hotkey_listener = None
+
+        if self._evdev_manager:
+            try:
+                self._evdev_manager.stop()
+            except Exception:
+                pass
+            self._evdev_manager = None
 
     def set_hotkey(self, new_hotkey: str) -> bool:
         """Update hotkey combination dynamically."""
@@ -174,7 +303,7 @@ class DictationService:
             logger.error("Cannot record: sounddevice library is missing.")
             return
 
-        logger.info("[Dictation] Recording started...")
+        logger.info("[Dictation] Recording started... Speak naturally.")
         self.is_recording = True
         self._audio_buffer = []
         self._play_sound("start")
@@ -246,8 +375,8 @@ class DictationService:
             logger.info(f"[Dictation] Raw: '{raw_text}' -> Clean: '{clean_text}'")
 
             if clean_text:
-                # Insert text into active text field
-                self._paste_text(clean_text)
+                # Insert text into active text field across Windows, macOS, and Linux
+                self._paste_text_universal(clean_text)
 
                 # Save to database history
                 record_id = str(uuid.uuid4())
@@ -285,43 +414,110 @@ class DictationService:
         finally:
             self.is_processing = False
 
-    def _paste_text(self, text: str):
+    def _paste_text_universal(self, text: str):
         """
         Pastes text directly into the focused application window
-        (WhatsApp, Slack, Notepad, Word, etc.) via clipboard paste simulation.
+        (WhatsApp, Slack, Notepad, Word, etc.) across Windows, Linux (Wayland & X11), and macOS.
         """
-        if not PYNPUT_AVAILABLE or self.keyboard_controller is None:
+        # --- LINUX HANDLING (Wayland and X11) ---
+        if sys.platform.startswith("linux"):
+            is_wayland = bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland")
+            
+            # 1. Clipboard Copy
+            copied = False
+            if is_wayland and shutil.which("wl-copy"):
+                try:
+                    subprocess.run(["wl-copy"], input=text.encode("utf-8"), check=True, timeout=2)
+                    copied = True
+                except Exception as e:
+                    logger.debug(f"wl-copy failed: {e}")
+            elif not is_wayland and shutil.which("xclip"):
+                try:
+                    subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode("utf-8"), check=True, timeout=2)
+                    copied = True
+                except Exception as e:
+                    logger.debug(f"xclip failed: {e}")
+
+            if not copied and PYNPUT_AVAILABLE:
+                try:
+                    pyperclip.copy(text)
+                    copied = True
+                except Exception:
+                    pass
+
+            time.sleep(0.08)
+
+            # 2. Simulated Paste Keystroke
+            pasted = False
+
+            # Wayland paste tools
+            if is_wayland:
+                if shutil.which("wtype"):
+                    try:
+                        subprocess.run(["wtype", "-M", "ctrl", "-k", "v", "-m", "ctrl"], check=True, timeout=2)
+                        pasted = True
+                    except Exception:
+                        pass
+                elif shutil.which("ydotool"):
+                    try:
+                        subprocess.run(["ydotool", "key", "29:1", "47:1", "47:0", "29:0"], check=True, timeout=2)
+                        pasted = True
+                    except Exception:
+                        pass
+
+            # X11 paste tools
+            if not pasted and not is_wayland and shutil.which("xdotool"):
+                try:
+                    subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True, timeout=2)
+                    pasted = True
+                except Exception:
+                    pass
+
+            # Fallback to pynput if available
+            if not pasted and PYNPUT_AVAILABLE and self.keyboard_controller:
+                try:
+                    with self.keyboard_controller.pressed(Key.ctrl):
+                        self.keyboard_controller.press("v")
+                        self.keyboard_controller.release("v")
+                    pasted = True
+                except Exception as e:
+                    logger.debug(f"pynput paste failed on Linux: {e}")
+
+            # Ultimate fallback: direct typing
+            if not pasted:
+                if is_wayland and shutil.which("wtype"):
+                    subprocess.run(["wtype", text], timeout=3)
+                elif shutil.which("xdotool"):
+                    subprocess.run(["xdotool", "type", "--delay", "0", text], timeout=3)
+
+            logger.info("[Dictation] Text inserted on Linux successfully.")
             return
 
-        try:
-            # Preserve existing clipboard content
+        # --- WINDOWS & MACOS HANDLING ---
+        if PYNPUT_AVAILABLE and self.keyboard_controller:
             try:
-                old_clip = pyperclip.paste()
-            except Exception:
-                old_clip = ""
+                try:
+                    old_clip = pyperclip.paste()
+                except Exception:
+                    old_clip = ""
 
-            # Copy cleaned text to clipboard
-            pyperclip.copy(text)
+                pyperclip.copy(text)
+                time.sleep(0.06)
 
-            # Small delay to ensure clipboard is updated in OS
-            time.sleep(0.06)
+                is_mac = sys.platform == "darwin"
+                modifier = Key.cmd if is_mac else Key.ctrl
 
-            # Simulate Ctrl+V (or Cmd+V on macOS)
-            is_mac = sys.platform == "darwin"
-            modifier = Key.cmd if is_mac else Key.ctrl
+                with self.keyboard_controller.pressed(modifier):
+                    self.keyboard_controller.press("v")
+                    self.keyboard_controller.release("v")
 
-            with self.keyboard_controller.pressed(modifier):
-                self.keyboard_controller.press("v")
-                self.keyboard_controller.release("v")
+                time.sleep(0.12)
+                try:
+                    if old_clip:
+                        pyperclip.copy(old_clip)
+                except Exception:
+                    pass
 
-            # Small delay before restoring clipboard
-            time.sleep(0.12)
-            try:
-                if old_clip:
-                    pyperclip.copy(old_clip)
-            except Exception:
-                pass
-
-            logger.info(f"[Dictation] Inserted clean text into active window successfully.")
-        except Exception as e:
-            logger.error(f"Failed to paste text into active window: {e}")
+                logger.info("[Dictation] Inserted clean text into active window successfully.")
+            except Exception as e:
+                logger.error(f"Failed to paste text into active window: {e}")

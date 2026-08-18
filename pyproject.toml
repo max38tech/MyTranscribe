@@ -18,6 +18,7 @@ dependencies = [
     "sounddevice>=0.5.6",
     "pynput>=1.8.2",
     "pyperclip>=1.11.0",
+    "evdev>=1.7.0; sys_platform == 'linux'",
 ]
 
 [project.optional-dependencies]

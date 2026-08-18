@@ -44,10 +44,26 @@ run.bat
 *(Dependencies and Python environment are automatically provisioned using `uv`).*
 
 ### 🐧 Linux / macOS
+1. **One-time Linux Setup** (installs clipboard tools & configures permissions):
 ```bash
-chmod +x run.sh
+chmod +x setup_linux.sh run.sh toggle.py
+./setup_linux.sh
+```
+
+2. **Start MyTranscribe**:
+```bash
 ./run.sh
 ```
+
+#### ⌨️ Linux Global Shortcut Setup (Wayland & X11)
+- **GNOME (Ubuntu / Fedora)**:
+  1. Open **Settings** $\rightarrow$ **Keyboard** $\rightarrow$ **View and Customize Shortcuts** $\rightarrow$ **Custom Shortcuts**.
+  2. Click **Add Shortcut (+)**:
+     - **Name**: `MyTranscribe Dictation`
+     - **Command**: `python3 /path/to/MyTranscribe/toggle.py` *(or `curl -s -X POST http://localhost:8000/api/dictation/toggle`)*
+     - **Shortcut**: `Ctrl+Alt+Space`
+- **KDE Plasma**: System Settings $\rightarrow$ Shortcuts $\rightarrow$ Custom Shortcuts $\rightarrow$ Add Command.
+- **Sway / i3 / Hyprland**: Add `bindsym $mod+Space exec python3 /path/to/MyTranscribe/toggle.py` to your config.
 
 ---
 

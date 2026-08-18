@@ -90,3 +90,11 @@ def test_api_dictation_config():
     data = resp.json()
     assert data["success"] is True
     assert data["hotkey"] == "<alt>+d"
+
+
+def test_api_dictation_toggle():
+    resp = client.post("/api/dictation/toggle")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is True
+    assert "is_recording" in data
