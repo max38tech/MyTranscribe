@@ -40,31 +40,18 @@ def open_browser():
     print(f"      to dictate and auto-insert clean text!")
     print(f"=======================================================\n")
 
-    # Try PyWebView if installed for native desktop window
     try:
-        import webview
-        webview.create_window("MyTranscribe", url, width=1200, height=850, min_size=(800, 600))
-        webview.start()
-        return
+        webbrowser.open(url)
     except Exception:
         pass
 
-    # Default: Open in default browser
-    webbrowser.open(url)
-
 
 def main():
-    server_thread = threading.Thread(target=start_server, daemon=True)
-    server_thread.start()
+    browser_thread = threading.Thread(target=open_browser, daemon=True)
+    browser_thread.start()
 
-    open_browser()
-
-    # Keep main thread alive if browser mode
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nStopping MyTranscribe...")
+    from backend.server import app
+    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
 
 
 if __name__ == "__main__":

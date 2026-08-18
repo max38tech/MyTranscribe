@@ -141,6 +141,7 @@ class EvdevHotKeyManager:
     def _loop(self, devices):
         import select
         active_keys: Set[int] = set()
+        combo_was_active = False
 
         try:
             while self.running:
@@ -151,11 +152,16 @@ class EvdevHotKeyManager:
                             if event.type == ecodes.EV_KEY:
                                 if event.value == 1:  # Key down
                                     active_keys.add(event.code)
-                                    # Check if all required hotkey groups have at least one active key
-                                    if all(any(k in active_keys for k in grp) for grp in self._key_codes):
-                                        self.on_trigger()
                                 elif event.value == 0:  # Key up
                                     active_keys.discard(event.code)
+
+                                # Check rising edge: only trigger once when combo is freshly pressed
+                                combo_is_active = all(any(k in active_keys for k in grp) for grp in self._key_codes)
+                                if combo_is_active and not combo_was_active:
+                                    combo_was_active = True
+                                    self.on_trigger()
+                                elif not combo_is_active:
+                                    combo_was_active = False
                     except Exception:
                         pass
         except Exception as err:
@@ -181,6 +187,7 @@ class DictationService:
 
         self.is_recording = False
         self.is_processing = False
+        self._last_toggle_time = 0.0
         self._audio_queue: queue.Queue = queue.Queue()
         self._audio_buffer: List[np.ndarray] = []
         self._raw_pcm_bytes: bytearray = bytearray()
@@ -190,6 +197,20 @@ class DictationService:
         self._evdev_manager: Optional[EvdevHotKeyManager] = None
         self._lock = threading.Lock()
         self.keyboard_controller = KeyboardController() if PYNPUT_AVAILABLE else None
+
+    def _on_hotkey_triggered(self):
+        """Called whenever the global shortcut is pressed with debounce protection."""
+        with self._lock:
+            now = time.time()
+            if now - self._last_toggle_time < 0.6:
+                # Debounce fast duplicate triggers (e.g. key repeats or dual GNOME/evdev events)
+                return
+            self._last_toggle_time = now
+
+            if not self.is_recording:
+                self.start_recording()
+            else:
+                self.stop_recording_and_insert()
 
     def start(self) -> bool:
         """Start the global hotkey listener in background across Windows, macOS, and Linux."""
@@ -310,13 +331,6 @@ class DictationService:
 
         threading.Thread(target=_play, daemon=True).start()
 
-    def _on_hotkey_triggered(self):
-        """Called whenever the global shortcut is pressed."""
-        with self._lock:
-            if not self.is_recording:
-                self.start_recording()
-            else:
-                self.stop_recording_and_insert()
 
     def start_recording(self):
         """Begin audio capture from microphone."""
