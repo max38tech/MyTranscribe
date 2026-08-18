@@ -29,14 +29,28 @@ else
     echo "[!] Note: You may need to log out and log back in for group changes to take effect."
 fi
 
-# 3. GNOME Custom Shortcut Auto-Configuration (Optional)
+# 3. GNOME Custom Shortcut Auto-Configuration (Ubuntu / Fedora / Debian)
 if command -v gsettings >/dev/null 2>&1; then
     SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/toggle.py"
-    echo ""
-    echo "[*] To add a native GNOME shortcut for 'Ctrl+Alt+Space', you can bind:"
-    echo "    Command: python3 $SCRIPT_PATH"
-    echo "    Shortcut: Ctrl+Alt+Space"
-    echo "    (In Settings -> Keyboard -> Keyboard Shortcuts -> Custom Shortcuts)"
+    BINDING_PATH="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom-mytranscribe/"
+    
+    echo "[*] Configuring GNOME keyboard shortcut (Ctrl+Alt+Space)..."
+    CURRENT=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings 2>/dev/null || echo "@as []")
+    
+    if [[ "$CURRENT" != *"$BINDING_PATH"* ]]; then
+        if [[ "$CURRENT" == "@as []" ]] || [[ "$CURRENT" == "[]" ]]; then
+            NEW_BINDINGS="['$BINDING_PATH']"
+        else
+            NEW_BINDINGS="${CURRENT%]*}, '$BINDING_PATH']"
+        fi
+        gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$NEW_BINDINGS" 2>/dev/null || true
+        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$BINDING_PATH name "MyTranscribe Dictation" 2>/dev/null || true
+        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$BINDING_PATH command "python3 $SCRIPT_PATH" 2>/dev/null || true
+        gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$BINDING_PATH binding "<Primary><Alt>space" 2>/dev/null || true
+        echo "[✓] GNOME shortcut registered: Ctrl+Alt+Space -> python3 $SCRIPT_PATH"
+    else
+        echo "[✓] GNOME shortcut is already active."
+    fi
 fi
 
 echo ""

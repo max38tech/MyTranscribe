@@ -183,7 +183,9 @@ class DictationService:
         self.is_processing = False
         self._audio_queue: queue.Queue = queue.Queue()
         self._audio_buffer: List[np.ndarray] = []
+        self._raw_pcm_bytes: bytearray = bytearray()
         self._sd_stream: Optional[Any] = None
+        self._cli_proc: Optional[Any] = None
         self._hotkey_listener: Optional[Any] = None
         self._evdev_manager: Optional[EvdevHotKeyManager] = None
         self._lock = threading.Lock()
@@ -281,6 +283,28 @@ class DictationService:
                         ]).astype(np.float32)
                     sd.play(audio, sr)
                     sd.wait()
+                elif sys.platform.startswith("linux"):
+                    # Linux CLI sound fallback (aplay / pw-play)
+                    sr = 16000
+                    if tone_type == "start":
+                        t1 = np.linspace(0, 0.08, int(sr * 0.08), False)
+                        t2 = np.linspace(0, 0.10, int(sr * 0.10), False)
+                        audio = np.concatenate([
+                            np.sin(2 * np.pi * 880 * t1) * 0.3,
+                            np.sin(2 * np.pi * 1174 * t2) * 0.3
+                        ])
+                    else:
+                        t1 = np.linspace(0, 0.08, int(sr * 0.08), False)
+                        t2 = np.linspace(0, 0.10, int(sr * 0.10), False)
+                        audio = np.concatenate([
+                            np.sin(2 * np.pi * 1174 * t1) * 0.3,
+                            np.sin(2 * np.pi * 880 * t2) * 0.3
+                        ])
+                    pcm_data = (audio * 32767).astype(np.int16).tobytes()
+                    if shutil.which("aplay"):
+                        subprocess.run(["aplay", "-q", "-r", "16000", "-f", "S16_LE", "-c", "1"], input=pcm_data, timeout=1)
+                    elif shutil.which("pw-play"):
+                        subprocess.run(["pw-play", "--rate", "16000", "--channels", "1", "--format", "s16", "-"], input=pcm_data, timeout=1)
             except Exception as e:
                 logger.debug(f"Audio chime failed: {e}")
 
@@ -299,36 +323,74 @@ class DictationService:
         if self.is_recording or self.is_processing:
             return
 
-        if not SOUNDDEVICE_AVAILABLE:
-            logger.error("Cannot record: sounddevice library is missing.")
-            return
-
-        logger.info("[Dictation] Recording started... Speak naturally.")
+        logger.info("[Dictation] 🔴 Recording started... Speak naturally.")
         self.is_recording = True
         self._audio_buffer = []
+        self._raw_pcm_bytes = bytearray()
         self._play_sound("start")
 
-        def audio_callback(indata, frames, time_info, status):
-            if status:
-                logger.warning(f"Audio input status: {status}")
-            if self.is_recording:
-                self._audio_buffer.append(indata.copy())
+        # Approach A: sounddevice if PortAudio is installed
+        if SOUNDDEVICE_AVAILABLE:
+            def audio_callback(indata, frames, time_info, status):
+                if status:
+                    logger.warning(f"Audio input status: {status}")
+                if self.is_recording:
+                    self._audio_buffer.append(indata.copy())
 
-        try:
-            self._sd_stream = sd.InputStream(
-                samplerate=16000,
-                channels=1,
-                dtype="float32",
-                callback=audio_callback,
-            )
-            self._sd_stream.start()
-        except Exception as e:
-            logger.error(f"Failed to open audio input stream: {e}")
-            self.is_recording = False
+            try:
+                self._sd_stream = sd.InputStream(
+                    samplerate=16000,
+                    channels=1,
+                    dtype="float32",
+                    callback=audio_callback,
+                )
+                self._sd_stream.start()
+                return
+            except Exception as e:
+                logger.debug(f"sounddevice stream open failed: {e}. Trying Linux CLI recorder fallback.")
+                self._sd_stream = None
+
+        # Approach B: Native Linux CLI stream (arecord / pw-record / parec)
+        if sys.platform.startswith("linux"):
+            recorder_cmd = None
+            if shutil.which("arecord"):
+                recorder_cmd = ["arecord", "-q", "-r", "16000", "-f", "S16_LE", "-c", "1", "-t", "raw"]
+            elif shutil.which("pw-record"):
+                recorder_cmd = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", "-"]
+            elif shutil.which("parec"):
+                recorder_cmd = ["parec", "--rate=16000", "--channels=1", "--format=s16le"]
+
+            if recorder_cmd:
+                try:
+                    self._cli_proc = subprocess.Popen(
+                        recorder_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                    )
+
+                    def _read_cli_audio():
+                        while self.is_recording and self._cli_proc and self._cli_proc.poll() is None:
+                            chunk = self._cli_proc.stdout.read(4096)
+                            if not chunk:
+                                break
+                            self._raw_pcm_bytes.extend(chunk)
+
+                    threading.Thread(target=_read_cli_audio, daemon=True).start()
+                    logger.info(f"[Dictation] Using native Linux audio recorder: {recorder_cmd[0]}")
+                    return
+                except Exception as ex:
+                    logger.error(f"Failed to start Linux audio recorder: {ex}")
+
+        logger.error(
+            "Cannot record audio: sounddevice/PortAudio not found and no CLI recorder (arecord/pw-record) available. "
+            "Please run './setup_linux.sh' or 'sudo apt install libportaudio2 alsa-utils'."
+        )
+        self.is_recording = False
 
     def _stop_recording(self) -> Optional[np.ndarray]:
         """Stop mic stream and return recorded audio as float32 1D numpy array."""
         self.is_recording = False
+
         if self._sd_stream:
             try:
                 self._sd_stream.stop()
@@ -337,12 +399,30 @@ class DictationService:
                 pass
             self._sd_stream = None
 
-        if not self._audio_buffer:
-            return None
+        if hasattr(self, "_cli_proc") and self._cli_proc:
+            try:
+                self._cli_proc.terminate()
+                self._cli_proc.wait(timeout=1)
+            except Exception:
+                pass
+            self._cli_proc = None
 
-        audio_np = np.concatenate(self._audio_buffer, axis=0).flatten()
-        self._audio_buffer = []
-        return audio_np
+        # If sounddevice captured numpy frames
+        if self._audio_buffer:
+            audio_np = np.concatenate(self._audio_buffer, axis=0).flatten()
+            self._audio_buffer = []
+            return audio_np
+
+        # If Linux CLI captured raw PCM bytes
+        if hasattr(self, "_raw_pcm_bytes") and self._raw_pcm_bytes:
+            raw_bytes = bytes(self._raw_pcm_bytes)
+            even_len = len(raw_bytes) - (len(raw_bytes) % 2)
+            if even_len > 0:
+                audio_np = (np.frombuffer(raw_bytes[:even_len], dtype=np.int16).astype(np.float32) / 32768.0)
+                self._raw_pcm_bytes.clear()
+                return audio_np
+
+        return None
 
     def stop_recording_and_insert(self):
         """Stop recording, transcribe, clean, and insert into the active window."""
