@@ -91,7 +91,7 @@ class Transcriber:
         return dev, ct
 
     def load_model(self, model_name: Optional[str] = None) -> Any:
-        """Load or switch the active faster-whisper model."""
+        """Load or switch the active faster-whisper model with automatic compute-type fallback."""
         if model_name:
             self.current_model_name = model_name
 
@@ -100,23 +100,62 @@ class Transcriber:
                 logger.warning("faster-whisper is not available in environment.")
                 return None
 
-            device, compute_type = self._determine_device_and_compute()
-            self.active_device = device
-            self.active_compute_type = compute_type
-
-            logger.info(
-                f"Loading faster-whisper model '{self.current_model_name}' on {device} ({compute_type})..."
-            )
+            device, preferred_compute = self._determine_device_and_compute()
             os.makedirs(self.download_root, exist_ok=True)
-            self._model = WhisperModel(
-                self.current_model_name,
-                device=device,
-                compute_type=compute_type,
-                download_root=self.download_root,
-                cpu_threads=max(1, os.cpu_count() or 4),
-            )
-            logger.info(f"Model '{self.current_model_name}' loaded successfully.")
-            return self._model
+
+            # Build prioritized list of (device, compute_type) candidates
+            candidates: List[Tuple[str, str]] = []
+            if device == "cuda":
+                if preferred_compute != "auto":
+                    candidates.append(("cuda", preferred_compute))
+                candidates.extend([
+                    ("cuda", "float16"),
+                    ("cuda", "int8_float16"),
+                    ("cuda", "int8"),
+                    ("cuda", "float32"),
+                    ("cpu", "int8"),
+                    ("cpu", "float32"),
+                ])
+            else:
+                if preferred_compute != "auto":
+                    candidates.append(("cpu", preferred_compute))
+                candidates.extend([
+                    ("cpu", "int8"),
+                    ("cpu", "float32"),
+                ])
+
+            # Deduplicate candidates while preserving order
+            unique_candidates = []
+            for d, ct in candidates:
+                if (d, ct) not in unique_candidates:
+                    unique_candidates.append((d, ct))
+
+            last_err = None
+            cpu_threads = max(1, os.cpu_count() or 4)
+
+            for dev, ct in unique_candidates:
+                try:
+                    logger.info(
+                        f"Attempting to load faster-whisper model '{self.current_model_name}' on {dev} ({ct})..."
+                    )
+                    self._model = WhisperModel(
+                        self.current_model_name,
+                        device=dev,
+                        compute_type=ct,
+                        download_root=self.download_root,
+                        cpu_threads=cpu_threads,
+                    )
+                    self.active_device = dev
+                    self.active_compute_type = ct
+                    logger.info(f"Model '{self.current_model_name}' loaded successfully on {dev} ({ct}).")
+                    return self._model
+                except (ValueError, Exception) as err:
+                    last_err = err
+                    logger.warning(
+                        f"Compute type '{ct}' on '{dev}' not supported ({err}). Trying next fallback..."
+                    )
+
+            raise RuntimeError(f"Could not load faster-whisper model '{self.current_model_name}': {last_err}")
 
     def get_model(self) -> Any:
         """Returns the loaded model, loading it if not yet initialized."""
