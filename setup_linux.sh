@@ -20,9 +20,16 @@ elif command -v pacman >/dev/null 2>&1; then
     sudo pacman -S --noconfirm wl-clipboard xdotool wtype portaudio || true
 fi
 
-# 2. Add user to 'input' group for kernel-level evdev hotkeys
+# 2. Add user to 'input' group and configure uinput kernel permissions
+sudo modprobe uinput 2>/dev/null || true
+if [ ! -f /etc/udev/rules.d/99-uinput.rules ]; then
+    echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules >/dev/null 2>&1 || true
+    sudo udevadm control --reload-rules >/dev/null 2>&1 || true
+    sudo udevadm trigger >/dev/null 2>&1 || true
+fi
+
 if groups "$USER" | grep -q "\binput\b"; then
-    echo "[✓] User '$USER' is already in the 'input' group for global hotkeys."
+    echo "[✓] User '$USER' is already in the 'input' group for global hotkeys & auto-paste."
 else
     echo "[*] Adding '$USER' to the 'input' group for global hotkey support..."
     sudo usermod -aG input "$USER" || true

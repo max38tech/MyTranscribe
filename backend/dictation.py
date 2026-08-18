@@ -516,12 +516,12 @@ class DictationService:
         # --- LINUX HANDLING (Wayland and X11) ---
         if sys.platform.startswith("linux"):
             is_wayland = bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("XDG_SESSION_TYPE") == "wayland")
-            
-            # 1. Clipboard Copy
+
+            # 1. Copy to system clipboard
             copied = False
             if is_wayland and shutil.which("wl-copy"):
                 try:
-                    subprocess.run(["wl-copy"], input=text.encode("utf-8"), check=True, timeout=2)
+                    subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"], input=text.encode("utf-8"), check=True, timeout=2)
                     copied = True
                 except Exception as e:
                     logger.debug(f"wl-copy failed: {e}")
@@ -541,11 +541,38 @@ class DictationService:
 
             time.sleep(0.08)
 
-            # 2. Simulated Paste Keystroke
+            # 2. Simulate Paste without triggering GNOME Remote Desktop portal
             pasted = False
 
-            # Wayland paste tools
-            if is_wayland:
+            # Primary for Linux (Wayland & X11): Kernel uinput virtual keyboard (No Remote Desktop prompt)
+            if EVDEV_AVAILABLE:
+                try:
+                    from evdev import UInput, ecodes
+                    cap = {ecodes.EV_KEY: [ecodes.KEY_LEFTCTRL, ecodes.KEY_V]}
+                    with UInput(cap, name="mytranscribe-keyboard") as ui:
+                        time.sleep(0.04)
+                        ui.write(ecodes.EV_KEY, ecodes.KEY_LEFTCTRL, 1)
+                        ui.write(ecodes.EV_KEY, ecodes.KEY_V, 1)
+                        ui.syn()
+                        time.sleep(0.04)
+                        ui.write(ecodes.EV_KEY, ecodes.KEY_V, 0)
+                        ui.write(ecodes.EV_KEY, ecodes.KEY_LEFTCTRL, 0)
+                        ui.syn()
+                    pasted = True
+                    logger.info("[Dictation] Injected Ctrl+V via kernel uinput device.")
+                except Exception as ui_err:
+                    logger.debug(f"uinput paste fallback: {ui_err}")
+
+            # Secondary for X11 / Xwayland: xdotool
+            if not pasted and not is_wayland and shutil.which("xdotool"):
+                try:
+                    subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True, timeout=2)
+                    pasted = True
+                except Exception:
+                    pass
+
+            # Secondary for Wayland: wtype or ydotool
+            if not pasted and is_wayland:
                 if shutil.which("wtype"):
                     try:
                         subprocess.run(["wtype", "-M", "ctrl", "-k", "v", "-m", "ctrl"], check=True, timeout=2)
@@ -559,32 +586,25 @@ class DictationService:
                     except Exception:
                         pass
 
-            # X11 paste tools
-            if not pasted and not is_wayland and shutil.which("xdotool"):
-                try:
-                    subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True, timeout=2)
-                    pasted = True
-                except Exception:
-                    pass
-
-            # Fallback to pynput if available
-            if not pasted and PYNPUT_AVAILABLE and self.keyboard_controller:
+            # Only fallback to pynput on X11 (pynput on Wayland triggers the GNOME Remote Desktop dialog)
+            if not pasted and not is_wayland and PYNPUT_AVAILABLE and self.keyboard_controller:
                 try:
                     with self.keyboard_controller.pressed(Key.ctrl):
                         self.keyboard_controller.press("v")
                         self.keyboard_controller.release("v")
                     pasted = True
                 except Exception as e:
-                    logger.debug(f"pynput paste failed on Linux: {e}")
+                    logger.debug(f"pynput paste failed on X11: {e}")
 
-            # Ultimate fallback: direct typing
-            if not pasted:
-                if is_wayland and shutil.which("wtype"):
-                    subprocess.run(["wtype", text], timeout=3)
-                elif shutil.which("xdotool"):
-                    subprocess.run(["xdotool", "type", "--delay", "0", text], timeout=3)
+            # Desktop notification on Linux
+            if shutil.which("notify-send"):
+                try:
+                    preview = text[:50] + ("..." if len(text) > 50 else "")
+                    subprocess.Popen(["notify-send", "-a", "MyTranscribe", "-i", "input-keyboard", "-t", "2000", "🎙️ Dictation", preview])
+                except Exception:
+                    pass
 
-            logger.info("[Dictation] Text inserted on Linux successfully.")
+            logger.info("[Dictation] Text processing and insertion completed.")
             return
 
         # --- WINDOWS & MACOS HANDLING ---
