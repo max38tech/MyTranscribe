@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#ec4899" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="#0f172a"/>
+  <!-- Glowing waveform ring -->
+  <circle cx="256" cy="256" r="210" fill="none" stroke="url(#grad)" stroke-width="12" opacity="0.4"/>
+  <!-- Microphone Body -->
+  <rect x="208" y="110" width="96" height="170" rx="48" fill="url(#grad)"/>
+  <!-- Microphone grid lines -->
+  <line x1="216" y1="160" x2="296" y2="160" stroke="#ffffff" stroke-width="6" opacity="0.5" stroke-linecap="round"/>
+  <line x1="216" y1="200" x2="296" y2="200" stroke="#ffffff" stroke-width="6" opacity="0.5" stroke-linecap="round"/>
+  <!-- Microphone cradle arc -->
+  <path d="M 160 220 C 160 320, 352 320, 352 220" fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
+  <!-- Stand -->
+  <line x1="256" y1="320" x2="256" y2="390" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
+  <line x1="180" y1="390" x2="332" y2="390" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
+  <!-- Clean speech sparkle magic star -->
+  <path d="M 370 120 Q 370 145 395 145 Q 370 145 370 170 Q 370 145 345 145 Q 370 145 370 120 Z" fill="#38bdf8"/>
+  <path d="M 140 160 Q 140 175 155 175 Q 140 175 140 190 Q 140 175 125 175 Q 140 175 140 160 Z" fill="#ec4899"/>
+</svg>

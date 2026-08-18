@@ -1,0 +1,37 @@
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# SQLite databases
+*.db
+*.sqlite3
+backend/transcripts.db
+
+# Build and distribution
+dist/
+build/
+*.egg-info/
+
+# Model caches and temporary audio
+.cache/
+*.wav
+*.mp3
+*.webm
+*.ogg
+*.m4a
+!frontend/icons/*
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

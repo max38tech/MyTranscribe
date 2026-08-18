@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="description" content="AI Speech Transcription with faster-whisper and intelligent disfluency & filler word cleanup.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <title>MyTranscribe - AI Speech Transcription & Cleanup</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" fill="url(#brandGrad)" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" stroke-linecap="round" />
+            <defs>
+              <linearGradient id="brandGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#6366f1" />
+                <stop offset="100%" stop-color="#ec4899" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>MyTranscribe</h1>
+          <span class="brand-badge">faster-whisper</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="model-status-pill" id="modelStatusPill" title="Click to change model">
+          <span class="status-indicator"></span>
+          <span class="model-name" id="activeModelLabel">base (CPU int8)</span>
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="currentColor"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+        </div>
+        <div class="dictation-pill" id="dictationStatusPill" title="Press in ANY app (WhatsApp, Slack, etc.) to dictate">
+          <span class="keyboard-icon">⌨️</span>
+          <span class="dictation-label">Any App:</span>
+          <kbd id="activeHotkeyLabel">Ctrl+Alt+Space</kbd>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="icon-btn" id="btnShareLan" title="Connect Mobile Phone / LAN">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          <span class="btn-label-desktop">Mobile / LAN</span>
+        </button>
+        <button class="icon-btn" id="btnToggleHistory" title="Transcript History">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="btn-label-desktop">History</span>
+          <span class="badge-count" id="historyCountBadge">0</span>
+        </button>
+        <button class="icon-btn" id="btnOpenSettings" title="Settings & Cleaner Rules">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="icon-btn theme-toggle" id="btnThemeToggle" title="Toggle Dark/Light Mode">
+          <svg class="sun-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="moon-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Layout -->
+    <main class="main-layout">
+      <!-- Recording & Visualizer Card -->
+      <section class="recording-card">
+        <div class="visualizer-wrapper">
+          <canvas id="waveformCanvas" class="waveform-canvas"></canvas>
+          <div class="recording-overlay" id="recordingOverlay">
+            <span class="recording-dot"></span>
+            <span class="recording-timer" id="recordingTimer">00:00</span>
+          </div>
+        </div>
+
+        <div class="controls-row">
+          <!-- Push to talk mode toggle -->
+          <div class="mode-toggle-group">
+            <label class="toggle-switch" title="Hold spacebar or button to talk">
+              <input type="checkbox" id="chkPushToTalk">
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Push to Talk</span>
+          </div>
+
+          <!-- Central Record Button -->
+          <div class="record-button-container">
+            <button class="btn-record" id="btnRecord" title="Click to start recording">
+              <div class="pulse-ring"></div>
+              <svg class="mic-icon" viewBox="0 0 24 24" width="32" height="32" fill="currentColor">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+              </svg>
+              <svg class="stop-icon" viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- File Upload Drop Button -->
+          <div class="file-upload-container">
+            <label class="btn-upload" title="Transcribe Audio File (WAV, MP3, M4A, OGG)">
+              <input type="file" id="fileAudioInput" accept="audio/*,video/*" hidden>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span>Upload Audio</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="recording-status-message" id="recordingStatus">
+          Ready to transcribe. Click microphone or press Spacebar.
+        </div>
+      </section>
+
+      <!-- Transcription Output Card -->
+      <section class="transcript-card">
+        <div class="card-toolbar">
+          <!-- View Modes -->
+          <div class="view-tabs">
+            <button class="tab-btn active" data-tab="clean" id="tabClean">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              Clean Text
+            </button>
+            <button class="tab-btn" data-tab="diff" id="tabDiff">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Filler Diff
+            </button>
+            <button class="tab-btn" data-tab="segments" id="tabSegments">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              Timestamps
+            </button>
+          </div>
+
+          <!-- Removal Stats Pill -->
+          <div class="fillers-removed-badge" id="removedFillersBadge" style="display: none;">
+            <span class="sparkle">✨</span>
+            <span id="removedCountText">0 filler words removed</span>
+          </div>
+
+          <!-- Utility Actions -->
+          <div class="action-tools">
+            <button class="action-btn" id="btnCopy" title="Copy to Clipboard">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span id="copyBtnText">Copy</span>
+            </button>
+            <div class="dropdown">
+              <button class="action-btn" id="btnExportMenu" title="Export File">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export</span>
+              </button>
+              <div class="dropdown-content" id="exportDropdown">
+                <button data-export="txt">Plain Text (.txt)</button>
+                <button data-export="md">Markdown (.md)</button>
+                <button data-export="srt">Subtitles (.srt)</button>
+                <button data-export="json">JSON Data (.json)</button>
+              </div>
+            </div>
+            <button class="action-btn" id="btnClear" title="Clear text">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Transcript Content Panes -->
+        <div class="tab-content-area">
+          <!-- Clean View -->
+          <div class="tab-pane active" id="paneClean">
+            <textarea id="cleanedTextOutput" class="text-editor" placeholder="Your clean transcribed text will appear here automatically with 'uuhmmm', 'uh', 'um', and stutters cleanly removed..."></textarea>
+          </div>
+
+          <!-- Diff Comparison View -->
+          <div class="tab-pane" id="paneDiff">
+            <div class="diff-split-container">
+              <div class="diff-box">
+                <div class="diff-header">
+                  <span>Raw Speech (Whisper)</span>
+                  <span class="tag-raw">Original</span>
+                </div>
+                <div class="diff-body" id="rawDiffContent">No speech recorded yet.</div>
+              </div>
+              <div class="diff-box">
+                <div class="diff-header">
+                  <span>Cleaned Result</span>
+                  <span class="tag-clean">Disfluencies Removed</span>
+                </div>
+                <div class="diff-body" id="cleanedDiffContent">No speech recorded yet.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Segments Timestamps View -->
+          <div class="tab-pane" id="paneSegments">
+            <div class="segments-list" id="segmentsList">
+              <div class="empty-state">No timestamped segments available.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Stats Bar -->
+        <div class="card-footer">
+          <div class="text-stats">
+            <span id="statWordCount">0 words</span>
+            <span class="stat-separator">•</span>
+            <span id="statCharCount">0 characters</span>
+            <span class="stat-separator">•</span>
+            <span id="statDuration">0.0s audio</span>
+          </div>
+          <div class="status-live-indicator" id="liveStreamBadge">
+            <span class="dot"></span>
+            <span>Real-time Ready</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- History Sidebar Drawer -->
+    <aside class="history-drawer" id="historyDrawer">
+      <div class="drawer-header">
+        <h2>Transcription History</h2>
+        <button class="icon-btn-close" id="btnCloseHistory">&times;</button>
+      </div>
+      <div class="drawer-search">
+        <input type="text" id="inputHistorySearch" placeholder="Search past transcripts...">
+      </div>
+      <div class="history-items-container" id="historyList">
+        <div class="empty-state">No saved transcripts yet.</div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn-secondary" id="btnClearAllHistory">Clear All History</button>
+      </div>
+    </aside>
+
+    <!-- Settings Modal -->
+    <div class="modal-backdrop" id="settingsModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Settings & Disfluency Cleaner</h2>
+          <button class="icon-btn-close" id="btnCloseSettings">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Disfluency Rules Section -->
+          <div class="settings-group">
+            <h3>Disfluency & Filler Word Cleaner</h3>
+            <p class="settings-desc">Choose which speech habits and filler sounds to automatically remove.</p>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label for="chkRemoveVocalFillers">Vocal Disfluencies</label>
+                <span>Removes "uuhmmm", "uh", "um", "err", "ahhh", "hmm", "mhm", etc.</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="chkRemoveVocalFillers" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label for="chkRemoveRepetitions">Word Repetitions & Stutters</label>
+                <span>Removes stuttered false starts like "I I think", "w- we can", "the the".</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="chkRemoveRepetitions" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div class="setting-info">
+                <label for="chkRemoveVerbalCrutches">Verbal Crutches & Fillers</label>
+                <span>Removes "you know", "i mean", "like", "sort of", "kind of", "basically".</span>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="chkRemoveVerbalCrutches">
+                <span class="slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-input-block">
+              <label for="inputCustomFillers">Custom Filler Words / Phrases to Remove (comma-separated)</label>
+              <input type="text" id="inputCustomFillers" placeholder="e.g. you see, to be honest, literally">
+            </div>
+
+            <div class="setting-input-block">
+              <label for="inputCustomPreserve">Words to Whitelist / Never Remove (comma-separated)</label>
+              <input type="text" id="inputCustomPreserve" placeholder="e.g. like, um">
+            </div>
+
+            <!-- Live Cleaner Sandbox -->
+            <div class="cleaner-sandbox">
+              <label>Cleaner Live Test Playground</label>
+              <input type="text" id="inputTestCleaner" value="Uuhmmm, we should, uh, definitely try this new feature. I I think it works.">
+              <div class="sandbox-result">
+                <span class="sandbox-label">Cleaned:</span>
+                <span id="outputTestCleaner" class="sandbox-output">...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Global System-Wide Dictation Settings -->
+          <div class="settings-group">
+            <h3>Global System-Wide Dictation (WhatsApp, Slack, Any App)</h3>
+            <p class="settings-desc">Dictate into any text box on your computer by pressing a global shortcut key.</p>
+
+            <div class="setting-grid">
+              <div class="setting-input-block">
+                <label for="selectHotkey">Global Shortcut Key</label>
+                <select id="selectHotkey" class="form-select">
+                  <option value="<ctrl>+<alt>+<space>">Ctrl + Alt + Space (Recommended)</option>
+                  <option value="<alt>+d">Alt + D</option>
+                  <option value="<ctrl>+<shift>+<space>">Ctrl + Shift + Space</option>
+                  <option value="<ctrl>+<shift>+d">Ctrl + Shift + D</option>
+                  <option value="<f8>">F8 Key</option>
+                  <option value="<f9>">F9 Key</option>
+                </select>
+              </div>
+
+              <div class="setting-row" style="margin-top: 1.25rem;">
+                <div class="setting-info">
+                  <label for="chkSoundChimes">Sound Chimes</label>
+                  <span>Play subtle beep on start/stop dictation</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="chkSoundChimes" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- faster-whisper Model Settings -->
+          <div class="settings-group">
+            <h3>faster-whisper AI Engine</h3>
+            <div class="setting-grid">
+              <div class="setting-input-block">
+                <label for="selectModel">Model Size</label>
+                <select id="selectModel" class="form-select">
+                  <option value="tiny">Tiny (~75MB - Fastest)</option>
+                  <option value="tiny.en">Tiny English (~75MB)</option>
+                  <option value="base" selected>Base (~145MB - Recommended)</option>
+                  <option value="base.en">Base English (~145MB)</option>
+                  <option value="small">Small (~480MB - High Accuracy)</option>
+                  <option value="small.en">Small English (~480MB)</option>
+                  <option value="medium">Medium (~1.5GB)</option>
+                  <option value="large-v3">Large v3 (~3GB - Max Accuracy)</option>
+                  <option value="large-v3-turbo">Large v3 Turbo (~1.6GB)</option>
+                </select>
+              </div>
+
+              <div class="setting-input-block">
+                <label for="selectLanguage">Language</label>
+                <select id="selectLanguage" class="form-select">
+                  <option value="auto">Auto Detect</option>
+                  <option value="en">English</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="ja">Japanese</option>
+                  <option value="zh">Chinese</option>
+                  <option value="it">Italian</option>
+                  <option value="pt">Portuguese</option>
+                  <option value="ko">Korean</option>
+                </select>
+              </div>
+
+              <div class="setting-input-block">
+                <label for="selectDevice">Inference Device</label>
+                <select id="selectDevice" class="form-select">
+                  <option value="auto">Auto (CUDA GPU if available, else CPU)</option>
+                  <option value="cpu">CPU (quantized int8)</option>
+                  <option value="cuda">NVIDIA GPU (CUDA float16)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn-primary" id="btnSaveSettings">Save & Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile / LAN Connection Modal -->
+    <div class="modal-backdrop" id="lanModal">
+      <div class="modal-card modal-small">
+        <div class="modal-header">
+          <h2>Connect Mobile Phone / Tablet</h2>
+          <button class="icon-btn-close" id="btnCloseLan">&times;</button>
+        </div>
+        <div class="modal-body text-center">
+          <p>Open this web app from any device on your Wi-Fi network to transcribe speech from your phone or tablet:</p>
+          <div class="lan-urls-container" id="lanUrlsList"></div>
+          <div class="pwa-install-tip">
+            <strong>💡 Install as App:</strong> In Chrome or Safari on your phone or desktop, tap <em>"Add to Home Screen"</em> or <em>"Install App"</em> to use MyTranscribe as a standalone PWA application!
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

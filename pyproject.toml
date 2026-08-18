@@ -1,0 +1,33 @@
+[project]
+name = "mytranscribe"
+version = "0.1.0"
+description = "Desktop and PWA Speech Transcription with faster-whisper and intelligent filler word cleanup"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "faster-whisper>=1.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "python-multipart>=0.0.9",
+    "websockets>=12.0",
+    "soundfile>=0.12.1",
+    "numpy>=1.24.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "pytest>=8.0.0",
+    "sounddevice>=0.5.6",
+    "pynput>=1.8.2",
+    "pyperclip>=1.11.0",
+]
+
+[project.optional-dependencies]
+desktop = [
+    "pywebview>=5.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
