@@ -1,0 +1,70 @@
+name: Bug report
+description: Something isn't working the way it should.
+title: "[Bug]: "
+labels: [bug, autosupport]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      placeholder: e.g. 2.4.1
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS
+        - Android
+        - Web
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: false
+
+  # GitHub Issue Forms has no native collapsible/hidden field, so this is
+  # the closest equivalent: a plain textarea, placed last, whose label tells
+  # a human reporter to leave it alone. When the app itself files a report,
+  # it does not go through this form at all - it posts the issue via the
+  # GitHub API with the diagnostic envelope embedded directly in the body
+  # (see AUTOSUPPORT.md and .autosupport/scripts/lib/envelope.mjs). This
+  # field exists for the rare case of a form-based integration and as a
+  # visible signal to reporters that automated diagnostics are a normal,
+  # expected part of a bug report here.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic data (auto-filled by the app - leave blank)
+      render: json
+    validations:
+      required: false

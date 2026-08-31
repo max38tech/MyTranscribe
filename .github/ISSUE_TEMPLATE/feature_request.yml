@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest an improvement or something new.
+title: "[Feature]: "
+labels: [enhancement, autosupport]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What problem are you running into?
+      description: What are you trying to do, and what's getting in the way?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What would you like to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Additional context
+      description: Anything else that helps explain the use case.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: false
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      placeholder: e.g. 2.4.1
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS
+        - Android
+        - Web
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: false
+
+  # See the matching field in bug_report.yml for why this is a plain
+  # textarea rather than a truly collapsed one - GitHub Issue Forms has no
+  # such control.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic data (auto-filled by the app - leave blank)
+      render: json
+    validations:
+      required: false

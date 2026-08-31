@@ -1,0 +1,49 @@
+name: AutoSupport - Fix
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: autosupport-fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: github.event.label.name == 'autosupport:auto-fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Upgrade path (documentation only, not live config) ---------------
+      # The step below runs .autosupport/scripts/fix.mjs: a small, patch-based
+      # fixer that asks Claude for a unified diff and applies it with
+      # `git apply`. That is the Level 1 default because it is entirely
+      # self-contained - no third-party Action, nothing beyond
+      # actions/checkout, Node 20+, and the gh CLI (see SPEC.md section 2 and
+      # the PKG-C brief: no invented third-party actions).
+      #
+      # For a fuller autonomous coding agent (multi-file edits, running your
+      # test suite, iterating on failures) you can swap this step for a
+      # third-party coding-agent action instead, for example:
+      #
+      #   - uses: anthropics/claude-code-action@v1
+      #     with:
+      #       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+      #       prompt: .autosupport/prompts/fix.md
+      #
+      # Doing so adds a third-party dependency this template does not take
+      # by default. Evaluate and pin a version before adopting it.
+      # -----------------------------------------------------------------------
+      - name: Generate fix
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .autosupport/scripts/fix.mjs
