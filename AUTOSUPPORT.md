@@ -41,6 +41,13 @@ AUTOSUPPORT.md            this file
    variables -> Actions -> New repository secret. All three workflows need
    it; without it every run fails immediately (and cheaply - it fails before
    any other work happens).
+
+   If your key is **identity-linked**, every call comes back
+   `400 ... anthropic-workspace-id is required`. Two ways out: add a second
+   secret `ANTHROPIC_WORKSPACE_ID` holding the workspace id the key acts in,
+   or issue a workspace-scoped key instead and use that. A workspace-scoped
+   key must NOT send the header, so leave `ANTHROPIC_WORKSPACE_ID` unset in
+   that case - the workflows omit the header entirely when it is empty.
 2. **Create the labels** the workflows key off of, if they don't already
    exist: `autosupport`, `autosupport:auto-fix`, `autosupport:respond`,
    `bug`, `enhancement`, `support`, `duplicate`, plus `severity:critical`,

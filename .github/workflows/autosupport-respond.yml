@@ -25,5 +25,6 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO: ${{ github.repository }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_WORKSPACE_ID: ${{ secrets.ANTHROPIC_WORKSPACE_ID }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node .autosupport/scripts/respond.mjs

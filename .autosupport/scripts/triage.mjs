@@ -184,6 +184,8 @@ export async function runTriage(deps = {}) {
   const issueNumber = Number(requireEnv(env, 'ISSUE_NUMBER'));
   const repo = requireEnv(env, 'REPO');
   const apiKey = requireEnv(env, 'ANTHROPIC_API_KEY');
+  // Optional: only identity-linked keys need it, workspace-scoped keys must not send it.
+  const workspaceId = env.ANTHROPIC_WORKSPACE_ID || undefined;
   const config = loadConfig(configPath);
 
   function postComment(body) {
@@ -227,6 +229,7 @@ export async function runTriage(deps = {}) {
     messages: [{ role: 'user', content: userMessage }],
     maxTokens: 1024,
     apiKey,
+    workspaceId,
   });
 
   let triage;

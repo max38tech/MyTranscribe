@@ -234,6 +234,8 @@ export async function runFix(deps = {}) {
   const issueNumber = Number(requireEnv(env, 'ISSUE_NUMBER'));
   const repo = requireEnv(env, 'REPO');
   const apiKey = requireEnv(env, 'ANTHROPIC_API_KEY');
+  // Optional: only identity-linked keys need it, workspace-scoped keys must not send it.
+  const workspaceId = env.ANTHROPIC_WORKSPACE_ID || undefined;
   const config = loadConfig(configPath);
 
   function postComment(body) {
@@ -274,6 +276,7 @@ export async function runFix(deps = {}) {
     messages: [{ role: 'user', content: userMessage }],
     maxTokens: 4000,
     apiKey,
+    workspaceId,
   });
 
   const diff = parseDiffResponse(raw);

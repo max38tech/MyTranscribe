@@ -9,14 +9,29 @@ const API_VERSION = '2023-06-01';
 // exercise this function's status/error handling (401, 429, 500, network
 // failure) without making a real network call. Any function matching
 // fetch's (url, init) -> Promise<Response-like> signature works.
-export async function ask({ model, system, messages, maxTokens = 2000, apiKey, transport = fetch }) {
+// workspaceId is required for identity-linked API keys, which reject every request with a
+// 400 naming the missing anthropic-workspace-id header. Workspace-scoped keys must NOT
+// send it, so the header is omitted entirely when the value is absent rather than sent
+// empty.
+export async function ask({
+  model,
+  system,
+  messages,
+  maxTokens = 2000,
+  apiKey,
+  workspaceId,
+  transport = fetch,
+}) {
+  const headers = {
+    'x-api-key': apiKey,
+    'anthropic-version': API_VERSION,
+    'content-type': 'application/json',
+  };
+  if (workspaceId) headers['anthropic-workspace-id'] = workspaceId;
+
   const res = await transport(API_URL, {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': API_VERSION,
-      'content-type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ model, system, messages, max_tokens: maxTokens }),
   });
 
