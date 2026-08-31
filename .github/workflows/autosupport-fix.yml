@@ -3,6 +3,13 @@ name: AutoSupport - Fix
 on:
   issues:
     types: [labeled]
+  # Manual re-run for one issue. The issue triggers above carry the issue number in
+  # the event payload; a dispatched run has no issue, so it is supplied as an input.
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to process
+        required: true
 
 permissions:
   issues: write
@@ -10,12 +17,12 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: autosupport-fix-${{ github.event.issue.number }}
+  group: autosupport-fix-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
   fix:
-    if: github.event.label.name == 'autosupport:auto-fix'
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'autosupport:auto-fix')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +49,7 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Generate fix
         env:
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
           REPO: ${{ github.repository }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_WORKSPACE_ID: ${{ secrets.ANTHROPIC_WORKSPACE_ID }}
