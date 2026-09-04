@@ -9,7 +9,7 @@ installable, GitHub-native support pipeline. This file explains what
 ```
 .autosupport/
   config.yml              pipeline configuration - read this first
-  prompts/                system prompts the three workflows send to Claude
+  prompts/                system prompts the three workflows send to the model
     triage.md
     fix.md
     respond.md
@@ -19,10 +19,10 @@ installable, GitHub-native support pipeline. This file explains what
     triage.mjs
     fix.mjs
     respond.mjs
-    lib/                   shared helpers (config, Claude client, gh/git
-                            exec wrapper, envelope extraction, untrusted-
-                            content prompt framing) - node:builtins only,
-                            no npm install
+    lib/                   shared helpers (config, provider router + the
+                            Anthropic and Google clients, gh/git exec
+                            wrapper, envelope extraction, untrusted-content
+                            prompt framing) - node:builtins only, no install
 .github/
   ISSUE_TEMPLATE/
     bug_report.yml
@@ -37,12 +37,23 @@ AUTOSUPPORT.md            this file
 
 ## Finish setup
 
-1. **Add the `ANTHROPIC_API_KEY` repo secret.** Settings -> Secrets and
-   variables -> Actions -> New repository secret. All three workflows need
-   it; without it every run fails immediately (and cheaply - it fails before
-   any other work happens).
+1. **Add the API key secret for whichever provider you configured.** Settings
+   -> Secrets and variables -> Actions -> New repository secret. Which key is
+   required is decided by the model ids in `.autosupport/config.yml`, not by a
+   separate setting:
 
-   If your key is **identity-linked**, every call comes back
+   | Model id prefix | Provider  | Required secret     |
+   |-----------------|-----------|---------------------|
+   | `claude-*`      | Anthropic | `ANTHROPIC_API_KEY` |
+   | `gemini-*`      | Google    | `GEMINI_API_KEY`    |
+
+   You only need the key for the provider you actually use; the other is
+   ignored. Stages are routed independently, so a config mixing vendors - a
+   cheap model for triage, a stronger one for fix - needs both. Without the
+   right key every run fails immediately, and cheaply: it fails before any
+   other work happens.
+
+   If an Anthropic key is **identity-linked**, every call comes back
    `400 ... anthropic-workspace-id is required`. Two ways out: add a second
    secret `ANTHROPIC_WORKSPACE_ID` holding the workspace id the key acts in,
    or issue a workspace-scoped key instead and use that. A workspace-scoped
@@ -96,8 +107,8 @@ AUTOSUPPORT.md            this file
   GitHub issue comment. That comment *is* the reply - there is no other
   notification channel in Level 1. If a reporter doesn't watch the issue,
   they won't hear back any other way.
-- **`fix.mjs` is patch-based, not a full coding agent.** It asks Claude for
-  a single unified diff and applies it with `git apply`, which is reliable
+- **`fix.mjs` is patch-based, not a full coding agent.** It asks the model
+  for a single unified diff and applies it with `git apply`, which is reliable
   but limited to changes that fit in one diff against the files triage
   already pointed at. `.github/workflows/autosupport-fix.yml` has a
   commented-out example of swapping in a third-party coding-agent Action for
@@ -105,11 +116,12 @@ AUTOSUPPORT.md            this file
   block for why.
 - **`.autosupport/scripts/lib/config.mjs` is a YAML *subset* loader, not a
   YAML parser.** It handles exactly the flat style `config.yml` ships with:
-  nested mappings, flow sequences (`[a, b]`), quoted or bare scalars,
-  comments. It does not support block "`- item`" lists, flow mappings, or
-  multi-line strings - a line it can't parse is skipped rather than crashing
-  a workflow. If you hand-edit `config.yml` into something fancier, `gh`
-  Actions will silently see fewer fields than you think. Keep edits flat.
+  nested mappings, flow sequences (`[a, b]`), block sequences of scalars
+  (`- item` lines), quoted or bare scalars, comments. It does not support
+  flow mappings, multi-line strings, or arrays of objects - a line it cannot
+  parse is skipped rather than crashing a workflow. If you hand-edit
+  `config.yml` into something fancier, the workflows will silently see fewer
+  fields than you think.
 - **"Converse" and "Learn" are not wired to anything yet.** `prompts/chat.md`
   and `.autosupport/knowledge/` exist so the shape is in place, but nothing
   in this template runs them. That's intentional for Level 1 - see

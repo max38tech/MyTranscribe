@@ -21,7 +21,8 @@ import { readFileSync, writeFileSync, lstatSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ask as defaultAsk, stripCodeFences } from './lib/claude.mjs';
+import { ask as defaultAsk } from './lib/llm.mjs';
+import { stripCodeFences } from './lib/claude.mjs';
 import { extractJsonBlock, TRIAGE_MARKERS } from './lib/envelope.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { createExec } from './lib/exec.mjs';
@@ -233,8 +234,8 @@ export async function runFix(deps = {}) {
 
   const issueNumber = Number(requireEnv(env, 'ISSUE_NUMBER'));
   const repo = requireEnv(env, 'REPO');
-  const apiKey = requireEnv(env, 'ANTHROPIC_API_KEY');
-  // Optional: only identity-linked keys need it, workspace-scoped keys must not send it.
+  // The provider (and therefore which API key env var is required) is derived from
+  // the configured model id by lib/llm.mjs, which errors naming the missing variable.
   const workspaceId = env.ANTHROPIC_WORKSPACE_ID || undefined;
   const config = loadConfig(configPath);
 
@@ -275,7 +276,7 @@ export async function runFix(deps = {}) {
     system,
     messages: [{ role: 'user', content: userMessage }],
     maxTokens: 4000,
-    apiKey,
+    env,
     workspaceId,
   });
 
