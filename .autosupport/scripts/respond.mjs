@@ -144,7 +144,7 @@ export async function runRespond(deps = {}) {
     model,
     system,
     messages: [{ role: 'user', content: userMessage }],
-    maxTokens: 1024,
+    maxTokens: 2048,
     env,
     workspaceId,
   });

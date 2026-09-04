@@ -228,7 +228,10 @@ export async function runTriage(deps = {}) {
     model,
     system,
     messages: [{ role: 'user', content: userMessage }],
-    maxTokens: 1024,
+    // Thinking tokens are charged against this budget, so it has to cover reasoning
+    // plus the JSON payload, not just the payload.
+    maxTokens: 4096,
+    json: true,
     env,
     workspaceId,
   });

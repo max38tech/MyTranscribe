@@ -16,7 +16,15 @@ function toGeminiRole(role) {
   throw new Error(`gemini: unsupported message role "${role}"`);
 }
 
-export async function ask({ model, system, messages, maxTokens = 2000, apiKey, transport = fetch }) {
+export async function ask({
+  model,
+  system,
+  messages,
+  maxTokens = 2000,
+  apiKey,
+  json = false,
+  transport = fetch,
+}) {
   const body = {
     contents: (messages ?? []).map((m) => ({
       role: toGeminiRole(m.role),
@@ -24,6 +32,9 @@ export async function ask({ model, system, messages, maxTokens = 2000, apiKey, t
     })),
     generationConfig: { maxOutputTokens: maxTokens },
   };
+  // Constrained decoding beats asking politely: with this set the response is guaranteed
+  // parseable, instead of depending on the model not wrapping it in prose or a fence.
+  if (json) body.generationConfig.responseMimeType = 'application/json';
   if (system) body.system_instruction = { parts: [{ text: system }] };
 
   const res = await transport(`${API_BASE}/${encodeURIComponent(model)}:generateContent`, {
@@ -56,6 +67,18 @@ export async function ask({ model, system, messages, maxTokens = 2000, apiKey, t
   if (!text) {
     throw new Error(
       `Gemini API returned an empty response (finishReason: ${candidate.finishReason ?? 'unknown'})`
+    );
+  }
+
+  // A truncated response is text that happens to stop mid-token. Callers parsing JSON
+  // would otherwise report "unterminated string", which describes the symptom and hides
+  // the cause -- the budget, not the model, was the problem. Gemini 3.x models think
+  // before answering and that reasoning is charged against maxOutputTokens, so the usable
+  // budget is smaller than it looks.
+  if (candidate.finishReason === 'MAX_TOKENS') {
+    throw new Error(
+      `Gemini API response was truncated at the ${maxTokens}-token limit (finishReason: MAX_TOKENS). ` +
+        'Raise maxTokens for this call; thinking tokens count against the same budget.'
     );
   }
   return text;

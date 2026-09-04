@@ -30,7 +30,7 @@ export function apiKeyEnvFor(model) {
 
 // env is passed in rather than read from process.env so tests can drive this without
 // mutating global state, and so a missing key names the exact variable to set.
-export async function ask({ model, system, messages, maxTokens, env = {}, transport, workspaceId }) {
+export async function ask({ model, system, messages, maxTokens, env = {}, transport, workspaceId, json }) {
   const provider = providerFor(model);
   const spec = PROVIDERS[provider];
   const apiKey = env[spec.keyEnv];
@@ -42,6 +42,9 @@ export async function ask({ model, system, messages, maxTokens, env = {}, transp
   }
 
   const args = { model, system, messages, maxTokens, apiKey };
+  // Only Google exposes constrained JSON decoding through this client; for Anthropic the
+  // prompt is the only constraint, so the flag is simply not forwarded.
+  if (provider === 'google' && json) args.json = true;
   if (transport) args.transport = transport;
   // Only Anthropic takes a workspace id; passing it to another provider would be a bug.
   if (provider === 'anthropic' && workspaceId) args.workspaceId = workspaceId;

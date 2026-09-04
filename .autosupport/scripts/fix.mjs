@@ -275,7 +275,9 @@ export async function runFix(deps = {}) {
     model,
     system,
     messages: [{ role: 'user', content: userMessage }],
-    maxTokens: 4000,
+    // A unified diff plus the reasoning that produced it; thinking models charge both
+    // against this budget.
+    maxTokens: 8192,
     env,
     workspaceId,
   });
