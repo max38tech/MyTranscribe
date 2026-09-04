@@ -77,7 +77,14 @@ export async function ask({
 // retrying it wastes quota and delays the error the operator needs to see.
 const TRANSIENT_STATUSES = new Set([429, 500, 502, 503, 504]);
 
-export async function withRetry(fn, { attempts = 3, sleep = defaultSleep } = {}) {
+// Five attempts backing off 2s, 4s, 8s, 16s: about half a minute of patience. The first
+// version gave up after ~3 seconds and still lost to a 503, because free-tier congestion
+// lasts minutes, not milliseconds. A workflow job may run for hours, so waiting is nearly
+// free here, while failing means an issue goes untriaged with nobody watching. Capped so
+// a long outage still ends in a real error rather than a job that hangs.
+const MAX_BACKOFF_MS = 30_000;
+
+export async function withRetry(fn, { attempts = 5, sleep = defaultSleep } = {}) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
@@ -86,10 +93,10 @@ export async function withRetry(fn, { attempts = 3, sleep = defaultSleep } = {})
       lastError = err;
       const retryable = TRANSIENT_STATUSES.has(err?.status);
       if (!retryable || attempt === attempts) throw err;
-      // Backoff with jitter: several workflows can fire at once on a busy repo, and
-      // retrying in lockstep would recreate the spike that caused the 503.
-      const base = 1000 * 2 ** (attempt - 1);
-      await sleep(base + Math.floor(Math.random() * 500));
+      // Jittered: several workflows can fire at once on a busy repo, and retrying in
+      // lockstep would recreate the spike that caused the 503.
+      const base = Math.min(MAX_BACKOFF_MS, 2000 * 2 ** (attempt - 1));
+      await sleep(base + Math.floor(Math.random() * 1000));
     }
   }
   throw lastError;
