@@ -8,10 +8,10 @@ app:
     - linux
     - web
 model:
-  triage: gemini-3.7-flash
-  fix: gemini-3.7-flash
-  respond: gemini-3.7-flash
-  chat: gemini-3.7-flash
+  triage: claude-haiku-4-5
+  fix: claude-sonnet-5
+  respond: claude-haiku-4-5
+  chat: claude-haiku-4-5
 policy:
   bug:
     auto_fix: true
