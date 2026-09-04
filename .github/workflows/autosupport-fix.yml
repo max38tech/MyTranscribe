@@ -34,9 +34,14 @@ concurrency:
 
 jobs:
   fix:
-    # workflow_call and workflow_dispatch are both explicit requests to run; only the
-    # label event needs filtering, since it fires for every label on every issue.
-    if: github.event_name != 'issues' || github.event.label.name == 'autosupport:auto-fix'
+    # Keyed on whether an issue number was handed in, NOT on github.event_name. A reusable
+    # workflow inherits the caller's event context, so when triage is triggered by
+    # `issues: opened` this workflow also sees event_name `issues` even though it was
+    # invoked by workflow_call -- and `github.event.label` does not exist on an opened
+    # event, so an event_name check skipped every automatic run while passing manual ones.
+    # inputs.issue_number is set for workflow_call and workflow_dispatch and empty for a
+    # label event, which is exactly the distinction that matters.
+    if: inputs.issue_number != '' || github.event.label.name == 'autosupport:auto-fix'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
