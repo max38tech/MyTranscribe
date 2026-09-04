@@ -176,13 +176,10 @@ class Transcriber:
         Returns raw transcribed text and segment metadata.
         """
         if not FASTER_WHISPER_AVAILABLE:
-            return {
-                "text": "faster-whisper is not installed. Please install faster-whisper to transcribe speech.",
-                "language": "en",
-                "language_probability": 1.0,
-                "duration": 0.0,
-                "segments": [],
-            }
+            raise RuntimeError(
+                "faster-whisper is not installed. Transcription cannot proceed. "
+                "Please install faster-whisper (see setup instructions) and restart the app."
+            )
 
         model = self.get_model()
         if model is None:
