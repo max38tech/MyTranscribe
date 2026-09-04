@@ -223,7 +223,7 @@ export async function runTriage(deps = {}) {
   const system = readFileSync(path.join(__dirname, '..', 'prompts', 'triage.md'), 'utf8');
   const userMessage = buildUserMessage({ issue, envelope, priorMatches });
 
-  const model = config.model?.triage ?? 'claude-sonnet-5';
+  const model = config.model?.triage ?? 'gemini-3.8-flash';
   const raw = await askFn({
     model,
     system,

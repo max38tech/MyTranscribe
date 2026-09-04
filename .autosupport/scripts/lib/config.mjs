@@ -135,10 +135,10 @@ export function parseYaml(text) {
 
 const DEFAULTS = {
   model: {
-    triage: 'claude-sonnet-5',
-    fix: 'claude-sonnet-5',
-    respond: 'claude-sonnet-5',
-    chat: 'claude-sonnet-5',
+    triage: 'gemini-3.8-flash',
+    fix: 'gemini-3.8-flash',
+    respond: 'gemini-3.8-flash',
+    chat: 'gemini-3.8-flash',
   },
   policy: {
     bug: { auto_fix: true, auto_pr: true, require_approval: true, confidence_floor: 0.8, labels: [] },

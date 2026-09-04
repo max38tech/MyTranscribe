@@ -270,7 +270,7 @@ export async function runFix(deps = {}) {
   const system = readFileSync(path.join(__dirname, '..', 'prompts', 'fix.md'), 'utf8');
   const userMessage = buildUserMessage({ issue, triage, fileBlocks });
 
-  const model = config.model?.fix ?? 'claude-sonnet-5';
+  const model = config.model?.fix ?? 'gemini-3.8-flash';
   const raw = await askFn({
     model,
     system,

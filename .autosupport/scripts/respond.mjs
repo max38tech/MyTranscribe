@@ -139,7 +139,7 @@ export async function runRespond(deps = {}) {
 
   const userMessage = buildUserMessage({ issue, outcome, tone, locale, triage, fixLinked, signature });
 
-  const model = config.model?.respond ?? 'claude-sonnet-5';
+  const model = config.model?.respond ?? 'gemini-3.8-flash';
   const reply = await askFn({
     model,
     system,
