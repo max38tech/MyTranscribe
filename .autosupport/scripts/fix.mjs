@@ -82,6 +82,24 @@ export function resolveSuspectedAreaRoot(suspectedArea) {
 // could otherwise be steered to read a file outside the repo root even
 // though the path string itself looks innocuous - see ADV-3. lstat (which
 // does not follow symlinks) is used deliberately instead of stat.
+// Vendored, generated and lock content: never worth spending context on, and a denylist
+// only has to cover what a project might not have gitignored. `git ls-files` (preferred
+// in runFix) already excludes all of it -- this is the belt for the filesystem fallback.
+const SKIP_DIRS = /^(\.git|\.hg|\.svn|node_modules|\.autosupport|\.venv|venv|__pycache__|\.pytest_cache|\.mypy_cache|\.tox|dist|build|target|vendor|coverage|\.next|\.nuxt|\.gradle|bin|obj)$/;
+const SKIP_FILES = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|uv\.lock|poetry\.lock|Cargo\.lock|Gemfile\.lock)$|\.(min\.js|min\.css|map|png|jpe?g|gif|webp|ico|svg|pdf|zip|gz|tar|whl|so|dylib|dll|exe|bin|wasm|mp3|mp4|wav|ttf|woff2?)$/i;
+
+// One oversized file must not swallow the whole budget before a smaller, more relevant
+// one is reached. Files are collected in directory order, so without this a single 90KB
+// module could crowd out the file the stack trace actually named.
+const MAX_FILE_BYTES = 32 * 1024;
+
+// Content that is not text at all costs tokens and teaches the model nothing. A NUL byte
+// in the first few KB is the cheap, encoding-agnostic test for binary.
+export function looksBinary(buf) {
+  const window = buf.subarray(0, 4096);
+  return window.includes(0);
+}
+
 export function collectFiles(root, suspectedArea) {
   const startRel = resolveSuspectedAreaRoot(suspectedArea);
   if (!startRel) return [];
@@ -100,7 +118,7 @@ export function collectFiles(root, suspectedArea) {
     }
     if (lst.isSymbolicLink()) return;
     if (lst.isDirectory()) {
-      if (/^(\.git|node_modules|\.autosupport)$/.test(path.basename(rel))) return;
+      if (SKIP_DIRS.test(path.basename(rel))) return;
       let entries;
       try {
         entries = readdirSync(abs).sort();
@@ -112,8 +130,13 @@ export function collectFiles(root, suspectedArea) {
         walk(path.join(rel, entry));
       }
     } else if (lst.isFile()) {
+      const posixRel = rel.split(path.sep).join('/');
+      if (SKIP_FILES.test(posixRel)) return;
+      // Skip rather than stop: a large file should not end collection for the smaller,
+      // possibly more relevant files that follow it.
+      if (lst.size > MAX_FILE_BYTES) return;
       if (totalBytes + lst.size > MAX_BYTES) return;
-      files.push(rel.split(path.sep).join('/'));
+      files.push(posixRel);
       totalBytes += lst.size;
     }
   }
@@ -163,6 +186,28 @@ export function isProtectedPath(relPath) {
 // Parses `diff --git a/X b/Y` header lines (unified/git diff format), and
 // falls back to `--- a/X` / `+++ b/Y` lines so a path is still found even if
 // a model omits the `diff --git` header line.
+// Intersects a candidate list with what git tracks. Degrades to returning the input
+// unchanged when git cannot answer (no repo, git missing, a shallow or odd checkout):
+// sending slightly more context is a cost problem, while sending nothing would break the
+// fix stage outright, so the failure leans toward still working.
+export function keepTracked(files, repoRoot, exec) {
+  if (files.length === 0) return files;
+  let tracked;
+  try {
+    const out = exec.git(['-C', repoRoot, 'ls-files', '--']);
+    tracked = new Set(
+      String(out ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+    );
+  } catch {
+    return files;
+  }
+  if (tracked.size === 0) return files;
+  return files.filter((rel) => tracked.has(rel));
+}
+
 export function extractDiffPaths(diffText) {
   const paths = new Set();
   for (const line of (diffText || '').split('\n')) {
@@ -253,17 +298,23 @@ export async function runFix(deps = {}) {
   ]);
   const triage = findTriageResult(issue.comments ?? []);
   const suspectedAreaRoot = resolveSuspectedAreaRoot(triage?.suspected_area);
-  const files = collectFiles(repoRoot, triage?.suspected_area);
+  // Narrow to files git actually tracks. A diff can only apply to tracked content, so
+  // anything else is context the model cannot act on -- and this drops every ignored,
+  // vendored, generated and build artifact for free, using the project's own .gitignore
+  // instead of a denylist that would need maintaining per ecosystem.
+  const files = keepTracked(collectFiles(repoRoot, triage?.suspected_area), repoRoot, exec);
 
   const fileBlocks = files
     .map((rel) => {
-      let content;
+      let buf;
       try {
-        content = readFileSync(path.join(repoRoot, rel), 'utf8');
+        buf = readFileSync(path.join(repoRoot, rel));
       } catch {
         return null;
       }
-      return `### File: ${rel}\n\`\`\`\n${content}\n\`\`\``;
+      // Binary read as UTF-8 is replacement characters: pure token cost, zero signal.
+      if (looksBinary(buf)) return null;
+      return `### File: ${rel}\n\`\`\`\n${buf.toString('utf8')}\n\`\`\``;
     })
     .filter(Boolean);
 
