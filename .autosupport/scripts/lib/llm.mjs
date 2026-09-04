@@ -30,7 +30,20 @@ export function apiKeyEnvFor(model) {
 
 // env is passed in rather than read from process.env so tests can drive this without
 // mutating global state, and so a missing key names the exact variable to set.
-export async function ask({ model, system, messages, maxTokens, env = {}, transport, workspaceId, json }) {
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function ask({
+  model,
+  system,
+  messages,
+  maxTokens,
+  env = {},
+  transport,
+  workspaceId,
+  json,
+  attempts,
+  sleep,
+}) {
   const provider = providerFor(model);
   const spec = PROVIDERS[provider];
   const apiKey = env[spec.keyEnv];
@@ -49,5 +62,35 @@ export async function ask({ model, system, messages, maxTokens, env = {}, transp
   // Only Anthropic takes a workspace id; passing it to another provider would be a bug.
   if (provider === 'anthropic' && workspaceId) args.workspaceId = workspaceId;
 
-  return spec.ask(args);
+  return withRetry(() => spec.ask(args), { attempts, sleep });
+}
+
+// SPEC.md section 2 originally listed retry as a non-goal. Dogfooding overturned that:
+// two of the first four live calls came back 503 "experiencing high demand", which is a
+// normal condition on a free tier, not an outage. These workflows run unattended, so
+// giving up permanently on an explicitly transient failure means issues silently go
+// untriaged and nobody finds out.
+//
+// This is a bounded retry, not retry infrastructure: three attempts, only for statuses
+// the provider itself describes as temporary. Every 4xx except 429 is a permanent
+// failure -- a bad key or a malformed request will fail identically forever, and
+// retrying it wastes quota and delays the error the operator needs to see.
+const TRANSIENT_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+export async function withRetry(fn, { attempts = 3, sleep = defaultSleep } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const retryable = TRANSIENT_STATUSES.has(err?.status);
+      if (!retryable || attempt === attempts) throw err;
+      // Backoff with jitter: several workflows can fire at once on a busy repo, and
+      // retrying in lockstep would recreate the spike that caused the 503.
+      const base = 1000 * 2 ** (attempt - 1);
+      await sleep(base + Math.floor(Math.random() * 500));
+    }
+  }
+  throw lastError;
 }

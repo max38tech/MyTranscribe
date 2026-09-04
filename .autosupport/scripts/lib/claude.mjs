@@ -37,7 +37,12 @@ export async function ask({
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Claude API request failed: ${res.status} ${res.statusText} - ${body.slice(0, 2000)}`);
+    const err = new Error(
+      `Claude API request failed: ${res.status} ${res.statusText} - ${body.slice(0, 2000)}`
+    );
+    // The retry layer in llm.mjs branches on this rather than parsing the message.
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();

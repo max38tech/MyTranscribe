@@ -45,7 +45,12 @@ export async function ask({
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Gemini API request failed: ${res.status} ${res.statusText} - ${text.slice(0, 2000)}`);
+    const err = new Error(
+      `Gemini API request failed: ${res.status} ${res.statusText} - ${text.slice(0, 2000)}`
+    );
+    // The retry layer in llm.mjs branches on this rather than parsing the message.
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();
