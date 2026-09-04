@@ -3,13 +3,14 @@ name: AutoSupport - Triage
 on:
   issues:
     types: [opened]
-  # Manual re-run for one issue. The issue triggers above carry the issue number in
+  # Manual re-run for one issue. The issue trigger above carries the issue number in
   # the event payload; a dispatched run has no issue, so it is supplied as an input.
   workflow_dispatch:
     inputs:
       issue_number:
         description: Issue number to process
         required: true
+        type: string
 
 permissions:
   issues: write
@@ -27,10 +28,14 @@ jobs:
     # other way is left alone.
     if: github.event_name == 'workflow_dispatch' || (contains(github.event.issue.labels.*.name, 'autosupport'))
     runs-on: ubuntu-latest
+    outputs:
+      auto_fix: ${{ steps.triage.outputs.auto_fix }}
+      issue_number: ${{ steps.triage.outputs.issue_number }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Triage issue
+        id: triage
         env:
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
           REPO: ${{ github.repository }}
@@ -40,3 +45,17 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node .autosupport/scripts/triage.mjs
+
+  # Triage adds the `autosupport:auto-fix` label, but that label can never start this
+  # stage on its own: GitHub does not trigger workflows from events created with the
+  # built-in GITHUB_TOKEN. So triage reports its decision as a step output and the fix
+  # workflow is invoked directly here. The alternative - a personal access token, whose
+  # events do trigger - would make every installation mint a long-lived write-scoped
+  # credential just to make the product work, which is not a reasonable ask.
+  fix:
+    needs: triage
+    if: needs.triage.outputs.auto_fix == 'true'
+    uses: ./.github/workflows/autosupport-fix.yml
+    with:
+      issue_number: ${{ needs.triage.outputs.issue_number }}
+    secrets: inherit

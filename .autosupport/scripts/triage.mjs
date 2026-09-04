@@ -11,7 +11,7 @@
 // tests can drive this whole script with fakes only - see TEST-PLAN.md's
 // "Required refactor" section.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -252,7 +252,8 @@ export async function runTriage(deps = {}) {
   // The triage comment above is the important deliverable and has already
   // posted, so a missing label should warn, not abort the run or block the
   // other labels/close from being attempted (see DEG-3).
-  for (const action of decideLabelActions(triage, config)) {
+  const actions = decideLabelActions(triage, config);
+  for (const action of actions) {
     if (action.type === 'add-label') {
       tryGh(['issue', 'edit', String(issueNumber), '--repo', repo, '--add-label', action.label], action.description);
     } else if (action.type === 'close') {
@@ -260,8 +261,28 @@ export async function runTriage(deps = {}) {
     }
   }
 
+  // The fix stage cannot be reached by labelling. GitHub suppresses workflow triggers for
+  // events created with the built-in GITHUB_TOKEN, to stop workflows retriggering
+  // themselves, so the `autosupport:auto-fix` label added just above fires nothing. The
+  // caller workflow reads this output and invokes the fix workflow directly instead. A
+  // label applied by a person still triggers normally, which is why fix keeps its
+  // `issues: [labeled]` trigger for the manual path.
+  const autoFix = actions.some((a) => a.type === 'add-label' && a.label === 'autosupport:auto-fix');
+  writeStepOutput({ auto_fix: String(autoFix), issue_number: String(issueNumber) }, env);
+
   console.log(`triage complete for #${issueNumber}: ${triage.classification}/${triage.severity ?? 'n/a'}`);
-  return { exitCode: 0, issueNumber, triage };
+  return { exitCode: 0, issueNumber, triage, autoFix };
+}
+
+// Appends key=value lines to the file GitHub Actions exposes as $GITHUB_OUTPUT. Outside
+// Actions the variable is unset and this is a no-op, so tests and local runs are
+// unaffected. Values here are our own booleans and numbers, never model output, so the
+// multiline-delimiter form is not needed.
+function writeStepOutput(pairs, env = process.env, append = appendFileSync) {
+  const target = env.GITHUB_OUTPUT;
+  if (!target) return false;
+  append(target, Object.entries(pairs).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
+  return true;
 }
 
 function isDirectRun() {

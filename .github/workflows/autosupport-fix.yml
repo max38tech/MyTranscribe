@@ -1,15 +1,27 @@
 name: AutoSupport - Fix
 
 on:
+  # Called directly by the triage workflow. This is the path that actually runs in
+  # practice: GitHub suppresses workflow triggers for events created with the built-in
+  # GITHUB_TOKEN (its guard against workflows retriggering themselves), so the
+  # `autosupport:auto-fix` label that triage applies fires nothing at all. Invoking this
+  # workflow as a reusable one is what closes that gap, and it needs no extra credential.
+  workflow_call:
+    inputs:
+      issue_number:
+        description: Issue number to process
+        required: true
+        type: string
+  # A label applied by a person is a real user event and does trigger normally, so this
+  # stays as the manual path: add `autosupport:auto-fix` to an issue by hand.
   issues:
     types: [labeled]
-  # Manual re-run for one issue. The issue triggers above carry the issue number in
-  # the event payload; a dispatched run has no issue, so it is supplied as an input.
   workflow_dispatch:
     inputs:
       issue_number:
         description: Issue number to process
         required: true
+        type: string
 
 permissions:
   issues: write
@@ -22,14 +34,16 @@ concurrency:
 
 jobs:
   fix:
-    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'autosupport:auto-fix')
+    # workflow_call and workflow_dispatch are both explicit requests to run; only the
+    # label event needs filtering, since it fires for every label on every issue.
+    if: github.event_name != 'issues' || github.event.label.name == 'autosupport:auto-fix'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       # --- Upgrade path (documentation only, not live config) ---------------
       # The step below runs .autosupport/scripts/fix.mjs: a small, patch-based
-      # fixer that asks Claude for a unified diff and applies it with
+      # fixer that asks the model for a unified diff and applies it with
       # `git apply`. That is the Level 1 default because it is entirely
       # self-contained - no third-party Action, nothing beyond
       # actions/checkout, Node 20+, and the gh CLI (see SPEC.md section 2 and
