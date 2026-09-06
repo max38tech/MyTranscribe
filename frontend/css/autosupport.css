@@ -1,0 +1,116 @@
+/* AutoSupport UI. Everything is prefixed .as- so it cannot collide with the app's own
+   styles. Colours come from the app's CSS custom properties where they exist, with
+   literal fallbacks so this still renders correctly if a variable is renamed. */
+
+.as-hidden { display: none !important; }
+.as-visible { display: inline-flex !important; }
+
+.as-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+}
+
+.as-modal {
+  background: var(--bg-card, #111827);
+  color: var(--text-primary, #e5e7eb);
+  border: 1px solid var(--border-color, #1f2937);
+  border-radius: 12px;
+  padding: 1.25rem;
+  width: min(32rem, 100%);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.as-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.as-note {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  opacity: 0.75;
+}
+
+.as-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #1f2937);
+  background: var(--bg-surface, #0b1220);
+  color: inherit;
+  font: inherit;
+}
+
+.as-input:focus-visible {
+  outline: 2px solid var(--primary, #6366f1);
+  outline-offset: 1px;
+}
+
+.as-textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.as-status {
+  min-height: 1.2rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  opacity: 0.9;
+}
+
+.as-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.as-btn {
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #1f2937);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.as-btn:hover { background: rgba(148, 163, 184, 0.12); }
+.as-btn:disabled { opacity: 0.6; cursor: default; }
+
+.as-btn-primary {
+  background: var(--primary, #6366f1);
+  border-color: var(--primary, #6366f1);
+  color: #fff;
+}
+
+.as-btn-primary:hover { filter: brightness(1.08); }
+
+.as-reply {
+  border-left: 3px solid var(--primary, #6366f1);
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.6rem;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 0 8px 8px 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .as-backdrop { backdrop-filter: none; }
+}
