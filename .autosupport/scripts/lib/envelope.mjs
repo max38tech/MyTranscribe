@@ -44,3 +44,30 @@ export function extractJsonBlock(text, startMarker, endMarker) {
 export function extractEnvelope(issueBody) {
   return extractJsonBlock(issueBody, ENVELOPE_MARKERS.start, ENVELOPE_MARKERS.end);
 }
+
+// The Level 2 ingest worker returns ONLY comments carrying these markers to the end user
+// (SPEC-L2.md section 5). That is an allowlist on purpose: a denylist would leak any
+// comment type added later, and the triage comment carries suspected_area, confidence and
+// internal summaries that a reporter must never see.
+export const REPLY_MARKERS = Object.freeze({
+  start: '<!-- autosupport:reply -->',
+  end: '<!-- /autosupport:reply -->',
+});
+
+export function wrapReply(text) {
+  return `${REPLY_MARKERS.start}\n${text}\n${REPLY_MARKERS.end}`;
+}
+
+// Returns the reply text without its markers, or null when the comment is not a reply.
+export function extractReply(commentBody) {
+  return extractBetween(commentBody, REPLY_MARKERS.start, REPLY_MARKERS.end);
+}
+
+function extractBetween(text, start, end) {
+  if (typeof text !== 'string') return null;
+  const from = text.indexOf(start);
+  if (from === -1) return null;
+  const to = text.indexOf(end, from + start.length);
+  if (to === -1) return null;
+  return text.slice(from + start.length, to).trim() || null;
+}

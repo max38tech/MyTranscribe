@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ask as defaultAsk } from './lib/llm.mjs';
-import { extractEnvelope, extractJsonBlock, TRIAGE_MARKERS } from './lib/envelope.mjs';
+import {extractEnvelope, extractJsonBlock, TRIAGE_MARKERS, wrapReply } from './lib/envelope.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { createExec } from './lib/exec.mjs';
 import { wrapUntrusted } from './lib/untrusted.mjs';
@@ -149,12 +149,15 @@ export async function runRespond(deps = {}) {
     workspaceId,
   });
 
-  const body = reply.trim();
-  if (!body) {
+  const text = reply.trim();
+  if (!text) {
     throw new Error('model returned an empty reply');
   }
 
-  postComment(body);
+  // Check emptiness before wrapping: the markers are non-empty on their own, so wrapping
+  // first would turn an empty model reply into a comment that passes this guard and
+  // reaches the reporter as two HTML comments and nothing else.
+  postComment(wrapReply(text));
   console.log(`respond complete for #${issueNumber}: outcome=${outcome}`);
   return { exitCode: 0, issueNumber, outcome };
 }
