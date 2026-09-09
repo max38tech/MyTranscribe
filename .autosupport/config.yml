@@ -41,3 +41,5 @@ reply:
   tone: friendly-concise
   languages:
     - en
+client:
+  endpoint: https://autosupport-ingest.autosupport-ingest.workers.dev
